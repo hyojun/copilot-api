@@ -8,6 +8,9 @@ import { getTokenCount } from "~/lib/tokenizer"
 import { type AnthropicMessagesPayload } from "./anthropic-types"
 import { translateToOpenAI } from "./non-stream-translation"
 
+const ANTHROPIC_COUNT_TOKENS_URL =
+  "https://api.anthropic.com/v1/messages/count_tokens"
+
 /**
  * Handles token counting for Anthropic messages
  */
@@ -15,7 +18,37 @@ export async function handleCountTokens(c: Context) {
   try {
     const anthropicBeta = c.req.header("anthropic-beta")
 
-    const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
+    const rawBody = await c.req.text()
+    const anthropicPayload = JSON.parse(rawBody) as AnthropicMessagesPayload
+
+    // Claude models: passthrough to Anthropic API
+    if (anthropicPayload.model.startsWith("claude-")) {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      }
+      for (const [key, value] of Object.entries(c.req.header())) {
+        const lower = key.toLowerCase()
+        if (
+          lower.startsWith("anthropic-") ||
+          lower === "authorization" ||
+          lower === "x-api-key"
+        ) {
+          headers[lower] = value
+        }
+      }
+      const response = await fetch(ANTHROPIC_COUNT_TOKENS_URL, {
+        method: "POST",
+        headers,
+        body: rawBody,
+      })
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          "content-type":
+            response.headers.get("content-type") || "application/json",
+        },
+      })
+    }
 
     const openAIPayload = translateToOpenAI(anthropicPayload)
 

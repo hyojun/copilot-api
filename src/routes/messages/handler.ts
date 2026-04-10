@@ -22,11 +22,61 @@ import {
 } from "./non-stream-translation"
 import { translateChunkToAnthropicEvents } from "./stream-translation"
 
-export async function handleCompletion(c: Context) {
-  await checkRateLimit(state)
+const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 
-  const anthropicPayload = await c.req.json<AnthropicMessagesPayload>()
+function isClaudeModel(model: string): boolean {
+  return model.startsWith("claude-")
+}
+
+async function handleClaudePassthrough(c: Context, body: string) {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  }
+
+  // Pass through all anthropic-* headers and authorization
+  for (const [key, value] of Object.entries(c.req.header())) {
+    const lower = key.toLowerCase()
+    if (
+      lower.startsWith("anthropic-") ||
+      lower === "authorization" ||
+      lower === "x-api-key"
+    ) {
+      headers[lower] = value
+    }
+  }
+
+  consola.info("Proxying Claude model request to api.anthropic.com")
+
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: "POST",
+    headers,
+    body,
+  })
+
+  // Stream the response back as-is
+  return new Response(response.body, {
+    status: response.status,
+    headers: {
+      "content-type": response.headers.get("content-type") || "application/json",
+      ...(response.headers.get("x-request-id")
+        ? { "x-request-id": response.headers.get("x-request-id")! }
+        : {}),
+    },
+  })
+}
+
+export async function handleCompletion(c: Context) {
+  // Read body once as text so we can inspect model and potentially forward as-is
+  const rawBody = await c.req.text()
+  const anthropicPayload = JSON.parse(rawBody) as AnthropicMessagesPayload
   consola.debug("Anthropic request payload:", JSON.stringify(anthropicPayload))
+
+  // Claude models: passthrough directly to Anthropic API
+  if (isClaudeModel(anthropicPayload.model)) {
+    return handleClaudePassthrough(c, rawBody)
+  }
+
+  await checkRateLimit(state)
 
   const openAIPayload = translateToOpenAI(anthropicPayload)
   consola.debug(

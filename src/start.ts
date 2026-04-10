@@ -69,32 +69,29 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   if (options.claudeCode) {
     invariant(state.models, "Models should be loaded by now")
 
-    const selectedModel = await consola.prompt(
-      "Select a model to use with Claude Code",
+    const copilotModels = state.models.data.map((model) => model.id)
+
+    const selectedCopilotModel = await consola.prompt(
+      "Select a Copilot model for coding tasks (non-Claude requests)",
       {
         type: "select",
-        options: state.models.data.map((model) => model.id),
+        options: copilotModels,
       },
     )
 
-    const selectedSmallModel = await consola.prompt(
-      "Select a small model to use with Claude Code",
-      {
-        type: "select",
-        options: state.models.data.map((model) => model.id),
-      },
-    )
+    consola.info("")
+    consola.info("Claude models (opus, sonnet) will be passed through directly to Anthropic API via OAuth.")
+    consola.info(`Non-Claude model requests will use Copilot model: ${selectedCopilotModel}`)
+    consola.info("")
+    consola.info("In Claude Code, switch models with /model command:")
+    consola.info("  /model opus   → routes to Anthropic API (OAuth)")
+    consola.info("  /model sonnet → routes to Anthropic API (OAuth)")
+    consola.info(`  /model ${selectedCopilotModel} → routes to Copilot API`)
+    consola.info("")
 
     const command = generateEnvScript(
       {
         ANTHROPIC_BASE_URL: serverUrl,
-        ANTHROPIC_AUTH_TOKEN: "dummy",
-        ANTHROPIC_MODEL: selectedModel,
-        ANTHROPIC_DEFAULT_SONNET_MODEL: selectedModel,
-        ANTHROPIC_SMALL_FAST_MODEL: selectedSmallModel,
-        ANTHROPIC_DEFAULT_HAIKU_MODEL: selectedSmallModel,
-        DISABLE_NON_ESSENTIAL_MODEL_CALLS: "1",
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
       },
       "claude",
     )
