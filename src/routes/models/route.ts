@@ -13,15 +13,30 @@ modelRoutes.get("/", async (c) => {
       await cacheModels()
     }
 
-    const models = state.models?.data.map((model) => ({
-      id: model.id,
-      object: "model",
-      type: "model",
-      created: 0, // No date available from source
-      created_at: new Date(0).toISOString(), // No date available from source
-      owned_by: model.vendor,
-      display_name: model.name,
-    }))
+    const ollamaModels = [
+      {
+        id: "glm-5.1",
+        object: "model" as const,
+        type: "model" as const,
+        created: 0,
+        created_at: new Date(0).toISOString(),
+        owned_by: "ollama",
+        display_name: "GLM 5.1 (Ollama)",
+      },
+    ]
+
+    const models = [
+      ...ollamaModels,
+      ...(state.models?.data.map((model) => ({
+        id: model.id,
+        object: "model" as const,
+        type: "model" as const,
+        created: 0,
+        created_at: new Date(0).toISOString(),
+        owned_by: model.vendor,
+        display_name: model.name,
+      })) ?? []),
+    ]
 
     return c.json({
       object: "list",

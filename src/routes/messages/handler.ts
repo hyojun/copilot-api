@@ -11,6 +11,10 @@ import {
   type ChatCompletionChunk,
   type ChatCompletionResponse,
 } from "~/services/copilot/create-chat-completions"
+import {
+  createOllamaChatCompletions,
+  isOllamaModel,
+} from "~/services/ollama/create-chat-completions"
 
 import {
   type AnthropicMessagesPayload,
@@ -37,9 +41,9 @@ async function handleClaudePassthrough(c: Context, body: string) {
   for (const [key, value] of Object.entries(c.req.header())) {
     const lower = key.toLowerCase()
     if (
-      lower.startsWith("anthropic-") ||
-      lower === "authorization" ||
-      lower === "x-api-key"
+      lower.startsWith("anthropic-")
+      || lower === "authorization"
+      || lower === "x-api-key"
     ) {
       headers[lower] = value
     }
@@ -57,10 +61,11 @@ async function handleClaudePassthrough(c: Context, body: string) {
   return new Response(response.body, {
     status: response.status,
     headers: {
-      "content-type": response.headers.get("content-type") || "application/json",
-      ...(response.headers.get("x-request-id")
-        ? { "x-request-id": response.headers.get("x-request-id")! }
-        : {}),
+      "content-type":
+        response.headers.get("content-type") || "application/json",
+      ...(response.headers.get("x-request-id") ?
+        { "x-request-id": response.headers.get("x-request-id") ?? "" }
+      : {}),
     },
   })
 }
@@ -88,7 +93,10 @@ export async function handleCompletion(c: Context) {
     await awaitApproval()
   }
 
-  const response = await createChatCompletions(openAIPayload)
+  const response =
+    isOllamaModel(anthropicPayload.model) ?
+      await createOllamaChatCompletions(openAIPayload)
+    : await createChatCompletions(openAIPayload)
 
   if (isNonStreaming(response)) {
     consola.debug(
