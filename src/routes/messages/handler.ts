@@ -32,7 +32,14 @@ function isClaudeModel(model: string): boolean {
   return model.startsWith("claude-")
 }
 
-async function handleClaudePassthrough(c: Context, body: string) {
+const CLAUDE_PASSTHROUGH_RETRIES = 3
+const CLAUDE_PASSTHROUGH_RETRY_DELAY_MS = 500
+
+async function handleClaudePassthrough(
+  c: Context,
+  body: string,
+  stream: boolean,
+) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   }
@@ -51,23 +58,54 @@ async function handleClaudePassthrough(c: Context, body: string) {
 
   consola.info("Proxying Claude model request to api.anthropic.com")
 
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: "POST",
-    headers,
-    body,
-  })
+  let lastError: unknown
+  for (let attempt = 1; attempt <= CLAUDE_PASSTHROUGH_RETRIES; attempt++) {
+    try {
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: "POST",
+        headers,
+        body,
+      })
 
-  // Stream the response back as-is
-  return new Response(response.body, {
-    status: response.status,
-    headers: {
-      "content-type":
-        response.headers.get("content-type") || "application/json",
-      ...(response.headers.get("x-request-id") ?
-        { "x-request-id": response.headers.get("x-request-id") ?? "" }
-      : {}),
-    },
-  })
+      const responseHeaders = {
+        "content-type":
+          response.headers.get("content-type") || "application/json",
+        ...(response.headers.get("x-request-id") ?
+          { "x-request-id": response.headers.get("x-request-id") ?? "" }
+        : {}),
+      }
+
+      if (!stream) {
+        // Buffer full body so a mid-transfer drop is caught here and retried
+        // rather than silently breaking the client connection.
+        const buffer = await response.arrayBuffer()
+        return new Response(buffer, {
+          status: response.status,
+          headers: responseHeaders,
+        })
+      }
+
+      return new Response(response.body, {
+        status: response.status,
+        headers: responseHeaders,
+      })
+    } catch (error) {
+      lastError = error
+      // Any TypeError from fetch() itself is a connection-level failure
+      // (stale keep-alive, reset, etc.) — safe to retry regardless of message.
+      if (
+        !(error instanceof TypeError)
+        || attempt === CLAUDE_PASSTHROUGH_RETRIES
+      ) {
+        throw error
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, CLAUDE_PASSTHROUGH_RETRY_DELAY_MS * attempt),
+      )
+    }
+  }
+
+  throw lastError
 }
 
 export async function handleCompletion(c: Context) {
@@ -78,7 +116,7 @@ export async function handleCompletion(c: Context) {
 
   // Claude models: passthrough directly to Anthropic API
   if (isClaudeModel(anthropicPayload.model)) {
-    return handleClaudePassthrough(c, rawBody)
+    return handleClaudePassthrough(c, rawBody, anthropicPayload.stream === true)
   }
 
   await checkRateLimit(state)

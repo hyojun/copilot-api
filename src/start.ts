@@ -80,8 +80,12 @@ export async function runServer(options: RunServerOptions): Promise<void> {
     )
 
     consola.info("")
-    consola.info("Claude models (opus, sonnet) will be passed through directly to Anthropic API via OAuth.")
-    consola.info(`Non-Claude model requests will use Copilot model: ${selectedCopilotModel}`)
+    consola.info(
+      "Claude models (opus, sonnet) will be passed through directly to Anthropic API via OAuth.",
+    )
+    consola.info(
+      `Non-Claude model requests will use Copilot model: ${selectedCopilotModel}`,
+    )
     consola.info("")
     consola.info("In Claude Code, switch models with /model command:")
     consola.info("  /model opus   → routes to Anthropic API (OAuth)")
@@ -114,6 +118,7 @@ export async function runServer(options: RunServerOptions): Promise<void> {
   serve({
     fetch: server.fetch as ServerHandler,
     port: options.port,
+    bun: { idleTimeout: 0 },
   })
 }
 
