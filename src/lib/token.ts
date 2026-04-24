@@ -9,6 +9,7 @@ import { pollAccessToken } from "~/services/github/poll-access-token"
 
 import { HTTPError } from "./error"
 import { state } from "./state"
+import { sleep } from "./utils"
 
 const readGithubToken = () => fs.readFile(PATHS.GITHUB_TOKEN_PATH, "utf8")
 
@@ -28,16 +29,31 @@ export const setupCopilotToken = async () => {
   const refreshInterval = (refresh_in - 60) * 1000
   setInterval(async () => {
     consola.debug("Refreshing Copilot token")
-    try {
-      const { token } = await getCopilotToken()
-      state.copilotToken = token
-      consola.debug("Copilot token refreshed")
-      if (state.showToken) {
-        consola.info("Refreshed Copilot token:", token)
+    const maxAttempts = 4
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const { token } = await getCopilotToken()
+        state.copilotToken = token
+        consola.debug("Copilot token refreshed")
+        if (state.showToken) {
+          consola.info("Refreshed Copilot token:", token)
+        }
+        break
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        const isTransient =
+          code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND"
+        if (isTransient && attempt < maxAttempts) {
+          const delay = 2 ** attempt * 1000
+          consola.warn(
+            `Failed to refresh Copilot token (attempt ${attempt}/${maxAttempts}), retrying in ${delay / 1000}s:`,
+            error,
+          )
+          await sleep(delay)
+        } else {
+          consola.error("Failed to refresh Copilot token:", error)
+        }
       }
-    } catch (error) {
-      consola.error("Failed to refresh Copilot token:", error)
-      throw error
     }
   }, refreshInterval)
 }
