@@ -12,6 +12,7 @@ const OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 const OLLAMA_MODEL_MAP: Record<string, string> = {
   "glm-5.1": "glm-5.1:cloud",
+  "deepseek-v4-pro": "deepseek-v4-pro:cloud",
 }
 
 function resolveOllamaModel(model: string): string {

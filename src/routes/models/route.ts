@@ -23,6 +23,15 @@ modelRoutes.get("/", async (c) => {
         owned_by: "ollama",
         display_name: "GLM 5.1 (Ollama)",
       },
+      {
+        id: "deepseek-v4-pro",
+        object: "model" as const,
+        type: "model" as const,
+        created: 0,
+        created_at: new Date(0).toISOString(),
+        owned_by: "ollama",
+        display_name: "DeepSeek V4 Pro (Ollama)",
+      },
     ]
 
     const models = [
